@@ -1,0 +1,895 @@
+---
+title: "Investigating Water Insecurity in the United States"
+subtitle: "INFO 526 - Summer 2026 - Final Project"
+author:
+  - name: "Jacob Caraccilo"
+    affiliations:
+      - name: "School of Information, University of Arizona"
+description: "Write-up for our data visualization project using the 2025 TidyTuesday Water Insecurity dataset to investigate patterns of water insecurity across U.S. counties and their relationship with racial demographic, economic, and regional parameters."
+format:
+  html:
+    code-fold: true
+    code-tools: true
+    code-overflow: wrap
+    embed-resources: true
+editor: visual
+execute:
+  warning: false
+  echo: false
+---
+
+```{r}
+#| label: load-pkgs
+#| message: false
+#| echo: false
+
+# installs pacman if not already installed
+if (!require("pacman")) 
+  install.packages("pacman")
+
+# installs a list of packages when listed in p_load
+ pacman::p_load(tidyverse,
+                kableExtra,
+                patchwork)
+
+water_census_2022 <- read_csv("data/water_census_2022.csv")
+water_census_2023 <- read_csv("data/water_census_2023.csv")
+```
+
+# Introduction
+
+## Data Overview
+
+The data utilized in this project includes the 2025 TidyTuesday dataset on Water insecurity and U.S. Census data on demographic, economic, and regional information. There are two separate datasets for 2022 and 2023, each featuring approximately 830 counties. The water insecurity data is from the U.S. Census Bureau and was developed through surveys of the public, meaning totals for those who are water insecure are estimates. The rest of the U.S. Census data on demographic, economic, and regional information was gathered independently using an API.
+
+The water insecurity data was created and derived using American Community Survey 1 (ACS1) population estimates, which are yearly estimates of population derived from sampling data over 12 months. The rest of the U.S. Census data is from ACS5 estimates, or estimates made from sampling data over 60 months. These two population estimates do result in somewhat different estimates for the same counties for each year. While it would be ideal to use the same estimate basis for all data, pulling ACS1 estimate data from the U.S. Census Bureau is not possible for counties with populations less than 65,000, as the U.S. Census Bureau does not publish this data for counties this small. Thus, using ACS1 data for everything would bias our analysis towards larger counties. For this reason, our analysis should be viewed as comparing descriptive data collected over related but differently times ACS estimates.
+
+The 2022 dataset includes `r nrow(water_census_2022)` counties, while the 2023 dataset includes `r nrow(water_census_2023)`. They both contain `r ncol(water_census_2022)` parameters:
+
+- `geoid`: A character variable of a unique county identifier code used by the U.S. Census Bureau.
+
+- `name`: A character variable of the name of the U.S. county.
+
+- `year`: A numerical variable of the year the data was collected (constant for each dataset).
+
+- `geometry`: A spatial geometry object that contains the geographic boundaries for each county in the dataset. Used to plot geographic maps of the U.S.
+
+- `acs1_total_population`: A numerical variable representing the population estimate of a given county from the 12 month American Community Survey. Used for creating the water insecurity data.
+
+- `plumbing`: A numerical variable representing the estimated number of people in the county who are water insecure, defined as their household lacking full plumbing.
+
+- `percent_lacking_plumbing`: A numerical variable of the percent of people in a county who are water insecure; a ratio of `plumbing` and `acs1_total_population` multiplied by 100.
+
+- `state_fips`: A character variable of the Federal Information Processing Standards for each state, which is the federal government's numerical code for identifying each state.
+
+- `county_fips`: A character variable of the Federal Information Processing Standards for each county, which is the federal government's numerical code for identifying each county.
+
+- `region`: A character variable denoting which region of the country a county is in, with the region being determined by Census area designation.
+
+- `acs5_total_population`: A numerical variable representing the population estimate of a given county from the 60 month American Community Survey. Used for creating the demographic and economic data.
+
+- `median_household_income`: A numerical variable of the median household income in a given country, derived from the 60 month ACS data.
+
+- `pct_nonhispanic_white`: A numerical variable of the percent of the population within a county that is non-Hispanic white, derived from the 60 month ACS data.
+
+- `pct_nonhispanic_black`: A numerical variable of the percent of the population within a county that is non-Hispanic black, derived from the 60 month ACS data.
+
+- `pct_nonhispanic_native`: A numerical variable of the percent of the population within a county that is non-Hispanic native, derived from the 60 month ACS data.
+
+- `pct_nonhispanic_asian`: A numerical variable of the percent of the population within a county that is non-Hispanic Asian, derived from the 60 month ACS data.
+
+- `pct_hispanic_latino`: A numerical variable of the percent of the population within a county that is Hispanic or Latino, derived from the 60 month ACS data.
+
+In accordance with our variables, we will be defining water insecurity as lacking access to full plumbing within a household.
+
+## Research Questions
+
+The data presented here allows us to examine the associations between these various regional, demographic, and economic variables and rates of water insecurity. There are seven variables we are examining, which is the region of the country a county originates from, the median income of a county, and five racial demographic variables representing the proportion of people within a county from a given group.
+
+It is important to clarify here that the relationships being examined are correlative rather than causative, as we are not able to use this data to conclude the sources and causes of water insecurity across the United States. Still, we are able to use this data to examine how different communities, defined by region, income level, and racial breakdown, are impacted by water insecurity and how the impacts of this problem are felt differently throughout the United States. Because of this, we will be answering the following two questions:
+
+1.  What demographic and economic characteristics are associated with higher and lower rates of water insecurity?
+2.  Which regions saw the biggest changes in water insecurity rates from 2022 to 2023? Did rates increase or decrease in those regions? Are county demographic, regional, or economic characteristics associated with these changes in water insecurity rates?
+
+## Analytical Approach
+
+To address both of these questions, we'll utilize a variety of visualizations. For question 1, we will focus on visualizing the 2022 data using three types of plots:
+
+- **Scatterplots and Linear Regression Plots** to examine the direction and magnitude of the observed associations between rates of water insecurity and median household income or racial demographic population shares.
+
+- **Boxplots** to visualize the median, quartiles, and outliers of water insecurity rates among counties with relatively high concentrations of specific racial demographics.
+
+- **Density Plots** to visualize the distribution of rates of water insecurity among counties with relatively high concentrations of specific racial demographics.
+
+We will be limiting our visualizations of the various racial demographics to the top 100 counties with the highest population share for each group. The reason for this is to better focus on counties where each demographic group represents relatively large shares of the population, rather than just displaying all counties at once. This approach was necessary because some demographic groups constitute much smaller portions of the country as a whole and make up majorities in only a handful of counties. For example, non-Hispanic Native Americans form a majority of only two counties within our data set. Visualizing all `r nrow(water_census_2022)` counties in the 2022 data set could obscure otherwise observable patterns among counties with high non-Hispanic Native American population shares. Meanwhile, visualizing only the counties with majorities of a specific group within them would limit us to only two counties for non-Hispanic Native Americans, which is insufficient for meaningful statistical analysis or broader conclusions. Since this means we will be visualizing different subsets of the data for each of these racial demographic groups, direct comparisons between our visualizations should be made with caution.
+
+Question 2 will feature the same types of plots, but will instead show the percentage-point change from 2022 to 2023 in rates of water insecurity for counties included in both data sets. This will be calculated as:
+
+$$ppc = wir_{2023} - wir_{2022} $$
+
+Where $ppc$ is our percentage-point change for a given county and $wir$ is our water insecurity rate for a given year for that county.
+
+We will also utilize our regional variable for this question and assess which region's counties showed notable changes in their water insecurity rate. The following plots will be created:
+
+- **Scatterplots and Linear Regression Plots** to examine the direction and magnitude of the observed associations between the percentage-point change in rates of water insecurity and median household income or racial demographic population shares.
+
+- **Boxplots** to visualize the median, quartiles, and outliers of the percentage-point change in rates of water insecurity among counties with relatively high concentrations of specific racial demographics and among counties from specific regions of the country.
+
+- **Density Plots** to visualize the distribution of the percentage-point change in rates of water insecurity among counties with relatively high concentrations of specific racial demographics and among counties from specific regions of the country.
+
+# Analysis
+
+## Question 1
+
+### Rates of Water Insecurity and Median Household Income
+
+```{r}
+#|label: question-1-median-income-analysis
+
+# creates a median income figure object to use in a patchwork figure later
+median_income_fig <- water_census_2022 |>
+  ggplot(
+    aes(x = median_household_income,
+        y = percent_lacking_plumbing)
+  ) +
+  # sets transparency of points to be lighter to better display clustering
+  geom_point(alpha = 0.4) +
+  geom_smooth(method = "lm", se = FALSE) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 11),
+    axis.title.x = element_text(size = 9),
+    axis.title.y = element_text(size = 9),
+    axis.text.x = element_text(size = 6),
+    axis.text.y = element_text(size = 6),
+    panel.border = element_rect(
+      color = "black",
+      fill = NA,
+      linewidth = 0.6
+    )
+  ) +
+  scale_x_continuous(
+    labels = scales::label_dollar() 
+  ) +
+  scale_y_continuous(
+    labels = scales::label_percent(scale = 1),
+     expand = c(0, 0) # used to limit plots to just the range of the data
+  ) +
+  labs(
+    title = "All Counties",
+    x = "Median Household Income",
+    y = "Households Lacking Complete Plumbing (%)"
+  )
+
+# creates a version of the figure with just the points clustered closer towards 0 to better
+# display their patterns
+median_income_fig_zoomed <- water_census_2022 |>
+  # filters out points with rates of water insecurity above 0.8%
+  filter(percent_lacking_plumbing < 0.8) |>
+  ggplot(
+    aes(x = median_household_income,
+        y = percent_lacking_plumbing)
+  ) +
+  geom_point(alpha = 0.4) + 
+  geom_smooth(method = "lm", se = FALSE) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 11),
+    axis.title.x = element_text(size = 9),
+    axis.title.y = element_text(size = 9),
+    axis.text.x = element_text(size = 6),
+    axis.text.y = element_text(size = 6),
+    panel.border = element_rect(
+      color = "black",
+      fill = NA,
+      linewidth = 0.6
+    )
+  ) +
+  scale_x_continuous(
+    labels = scales::label_dollar()
+  ) +
+  scale_y_continuous(
+    labels = scales::label_percent(scale = 1),
+    expand = c(0, 0)
+  ) +
+  labs(
+    title = "Counties Below 0.8% Water Insecurity",
+    x = "Median Household Income",
+    y = "Households Lacking Complete Plumbing (%)"
+  )
+
+# uses patchwork to stitch figures together
+fig_1 <- (median_income_fig | median_income_fig_zoomed) +
+  plot_annotation(
+    title = "Rates of Water Insecurity vs. Median Household Income Across US Counties",
+    caption = "Source: TidyTuesday Water Insecurity Dataset; U.S. Census Bureau American Community Survey"
+  )
+
+fig_1
+```
+
+```{r}
+#| include: false
+
+# creates figures folder within the images folder
+dir.create(
+  "images/figures",
+  recursive = TRUE,
+  showWarnings = FALSE
+)
+
+# saves fig 1 to figures folder
+ggsave(
+  filename = "images/figures/fig_1.png",
+  plot = fig_1,
+  width = 11,
+  height = 6,
+  dpi = 300,
+  bg = "white"
+)
+
+```
+
+The left figure displays all counties available in our data set and the relationship between rates of water insecurity and median household income. The right figure displays only counties with water insecurity rates at or below 0.8% to provide a clearer visualization of the points clustered near 0%. The regression lines in each figure were calculated based on the data displayed in that figure.
+
+We can immediately observe that while most counties have a rate of water insecurity below $0.5\%$ across all median household income levels, occurrences of relatively high rates of water insecurity are more common among lower median household income levels. For example, there are five counties with rates of water insecurity above $1\%$, and all of them have median household incomes below \$90,000.
+
+Water insecurity rates vary substantially across all median income levels. However, our regression lines still indicate a negative association between median household income and water insecurity rates. This suggests that higher rates of water insecurity are at least somewhat more common in counties with lower median household incomes, although the substantial variation would indicate this is not the case for all counties with lower median household incomes.
+
+### Rates of Water Insecurity and Racial Demographics
+
+```{r}
+#|label: question-1-racial-demographic-data-function-boxplot
+
+# function streamlines boxplot creation for each racial demographic group
+make_top_demographic_boxplot <- function(
+  data, # uses water_census_2022
+  demographic, # the racial demographic we're interested in
+  title_text # the title of the plot
+) {
+  
+  data |>
+    slice_max(
+      order_by = {{ demographic }}, # selects specific racial demographic group
+      n = 100, # selects top 100 counties by population share from that group
+      with_ties = FALSE # forces a limit at 100 counties
+    ) |>
+    ggplot(
+      aes(x = percent_lacking_plumbing) # plots figures horizontally
+    ) +
+    geom_boxplot() +
+    scale_x_continuous(
+      labels = scales::label_percent(scale = 1),
+      expand = c(0, 0)
+    ) +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(size = 9),
+      axis.title.x = element_text(size = 7),
+      axis.text.x = element_text(size = 7),
+      axis.title.y = element_blank(),
+      axis.text.y = element_blank(),
+      axis.ticks.y = element_blank(),
+      panel.border = element_rect(
+        color = "black",
+        fill = NA,
+        linewidth = 0.6
+      ),
+      plot.margin = margin(
+        t = 5.5,
+        r = 5.5,
+        b = 5.5,
+        l = 6.5 # set to avoid cutting off x-axis labels on the left side
+      )
+    ) +
+    labs(
+      title = title_text,
+      x = "Households Lacking Complete Plumbing (%)"
+    )
+}
+```
+
+```{r}
+#| label: question-1-plot-patchwork-boxplot
+# creates a figure object for each demographic's boxplot
+nh_white_plot_bp <- make_top_demographic_boxplot(water_census_2022, pct_nonhispanic_white, "Non-Hispanic White")
+
+nh_black_plot_bp <- make_top_demographic_boxplot(water_census_2022, pct_nonhispanic_black, "Non-Hispanic Black")
+
+nh_asian_plot_bp <- make_top_demographic_boxplot(water_census_2022, pct_nonhispanic_asian, "Non-Hispanic Asian")
+
+nh_native_plot_bp <- make_top_demographic_boxplot(water_census_2022, pct_nonhispanic_native, "Non-Hispanic Native")
+
+h_latino_plot_bp <- make_top_demographic_boxplot(water_census_2022, pct_hispanic_latino, "Hispanic Latino")
+
+# uses patchwork to stitch all of the figures together
+(nh_white_plot_bp | nh_black_plot_bp | nh_asian_plot_bp) /
+  (nh_native_plot_bp | h_latino_plot_bp) +
+  plot_annotation(
+    title = "Water Insecurity Rates Boxplots",
+    subtitle = "Each panel displays the top 100 counties with the highest population share for each racial demographic group",
+    caption = "Sources: TidyTuesday Water Insecurity Dataset; U.S. Census Bureau American Community Survey",
+    theme = theme(
+      plot.title = element_text(size = 14),
+      plot.subtitle = element_text(size = 10)
+    )
+  )
+```
+
+The above figures display the top 100 counties by population share for each indicated racial demographic group. Because each panel displays a different subset of data, caution should be used when making direct comparisons between figures. Additionally, the x-axis scale is not the same in each figure, so comparing relative widths of the boxplots should be done carefully.
+
+Across the 100 counties with the highest population share of each racial demographic group, rates of water insecurity are low. This is evident from the fact that the median rate of water insecurity across all groups is approximately $0.1\%$. Despite that, some groups do feature outliers with substantially higher rates. For example, some counties with high population shares of Non-Hispanic Native American residents have water insecurity rates above $3\%$, while the highest rates among other demographic groups are below $1\%$. Counties with high population shares of Hispanic Latino residents have the smallest maximum observed rate of water insecurity, as the county with the highest rate of water insecurity for that subgroup is less than $0.4\%$.
+
+```{r}
+#|label: question-1-racial-demographic-data-function-density
+
+# function streamlines density plot creation for each racial demographic group
+make_top_demographic_density <- function(
+  data, # uses water_census_2022
+  demographic, # the racial demographic we're interested in
+  title_text # the title of the plot
+) {
+  
+  data |>
+    slice_max(
+      order_by = {{ demographic }}, # selects specific racial demographic group
+      n = 100, # selects top 100 counties by population share from that group
+      with_ties = FALSE # forces a limit at 100 counties
+    ) |>
+    ggplot(
+      aes(x = percent_lacking_plumbing) # plots figures horizontally
+    ) +
+    geom_density(trim = TRUE) +
+    scale_x_continuous(
+      labels = scales::label_percent(scale = 1),
+      expand = c(0, 0)
+    ) +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(size = 9),
+      axis.title.x = element_text(size = 7),
+      axis.text.x = element_text(size = 7),
+      axis.title.y = element_blank(),
+      axis.text.y = element_blank(),
+      axis.ticks.y = element_blank(),
+      panel.border = element_rect(
+        color = "black",
+        fill = NA,
+        linewidth = 0.6
+      ),
+      plot.margin = margin(
+        t = 5.5,
+        r = 5.5,
+        b = 5.5,
+        l = 6.5 # set to avoid cutting off x-axis labels on the left side
+      )
+    ) +
+    labs(
+      title = title_text,
+      x = "Households Lacking Complete Plumbing (%)"
+    )
+}
+```
+
+```{r}
+#| label: question-1-plot-patchwork-density
+# creates a figure object for each demographic's density plot
+nh_white_plot_dp <- make_top_demographic_density(water_census_2022, pct_nonhispanic_white, "Non-Hispanic White")
+
+nh_black_plot_dp <- make_top_demographic_density(water_census_2022, pct_nonhispanic_black, "Non-Hispanic Black")
+
+nh_asian_plot_dp <- make_top_demographic_density(water_census_2022, pct_nonhispanic_asian, "Non-Hispanic Asian")
+
+nh_native_plot_dp <- make_top_demographic_density(water_census_2022, pct_nonhispanic_native, "Non-Hispanic Native")
+
+h_latino_plot_dp <- make_top_demographic_density(water_census_2022, pct_hispanic_latino, "Hispanic Latino")
+
+# uses patchwork to stitch all of the figures together
+(nh_white_plot_dp | nh_black_plot_dp | nh_asian_plot_dp) /
+  (nh_native_plot_dp | h_latino_plot_dp) +
+  plot_annotation(
+    title = "Water Insecurity Rates Density Plots",
+    subtitle = "Each panel displays the top 100 counties with the highest population share for each racial demographic group",
+    caption = "Sources: TidyTuesday Water Insecurity Dataset; U.S. Census Bureau American Community Survey",
+    theme = theme(
+      plot.title = element_text(size = 14),
+      plot.subtitle = element_text(size = 10)
+    )
+  )
+```
+
+Like our previous boxplot figures, the figures above use the same set of counties to construct each density plot. The same cautions concerning comparability apply here.
+
+Similarly to the boxplot figures, the data clusters near $0\%$ for all demographic groups. However, these plots allow us to see the distribution of the data across its entire range. The observations are similar to those made regarding the boxplots, as counties with large portions of Non-Hispanic Native Americans have several counties with relatively high rates of water insecurity compared to other counties. Counties with high Non-Hispanic Asian population shares seem to cluster the most strongly around $0\%$ to $0.1\%$ compared to other groups.
+
+```{r}
+#| label: question-1-racial-demographic-data-function-scatterplot
+# function streamlines scatterplot creation for each racial demographic group
+make_top_demographic_scatterplot <- function(
+  data, # uses census_water_2022
+  demographic, # the racial demographic we're interested in
+  title_text, # the title of the plot
+  x_label # the x-axis title
+) {
+  
+  data |>
+    slice_max(
+      order_by = {{ demographic }}, # selects specific racial demographic group
+      n = 100, # selects top 100 counties by population share from that group
+      with_ties = FALSE # forces a limit at 100 counties
+    ) |>
+    ggplot(
+      aes(
+        x = {{ demographic }},
+        y = percent_lacking_plumbing
+      )
+    ) +
+    geom_point(alpha = 0.6) + # sets points to be transparent to better show point density
+    geom_smooth(
+      method = "lm",
+      se = FALSE
+    ) +
+    scale_x_continuous(
+      labels = scales::label_percent(scale = 1)
+    ) +
+    scale_y_continuous(
+      labels = scales::label_percent(scale = 1),
+      expand = c(0, 0)
+    ) +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(size = 10),
+      axis.title.x = element_text(size = 6.5),
+      axis.title.y = element_text(size = 6.5),
+      axis.text.x = element_text(size = 5.5),
+      axis.text.y = element_text(size = 5.5),
+      panel.border = element_rect(
+        color = "black",
+        fill = NA,
+        linewidth = 0.6
+      ),
+      plot.margin = margin(
+        t = 5.5,
+        r = 5.5,
+        b = 5.5,
+        l = 6.5
+      )
+    ) +
+    labs(
+      title = title_text,
+      x = x_label,
+      y = "Water Insecurity Rate (%)" # changes water insecurity axis label 
+                                      # to make space work on patchwork figure
+    )
+}
+```
+
+```{r}
+#| label: question-1-plot-patchwork-scatterplot
+# creates a figure object for each demographic's scatterplot
+nh_white_plot_sp <- make_top_demographic_scatterplot(water_census_2022, pct_nonhispanic_white, "Non-Hispanic White", "Percent Non-Hispanic White")
+
+nh_black_plot_sp <- make_top_demographic_scatterplot(water_census_2022, pct_nonhispanic_black, "Non-Hispanic Black", "Percent Non-Hispanic Black")
+
+nh_asian_plot_sp <- make_top_demographic_scatterplot(water_census_2022, pct_nonhispanic_asian, "Non-Hispanic Asian", "Percent Non-Hispanic Asian")
+
+nh_native_plot_sp <- make_top_demographic_scatterplot(water_census_2022, pct_nonhispanic_native, "Non-Hispanic Native", "Percent Non-Hispanic Native")
+
+h_latino_plot_sp <- make_top_demographic_scatterplot(water_census_2022, pct_hispanic_latino, "Hispanic Latino", "Percent Hispanic Latino")
+
+# uses patchwork to stitch all of the figures together
+fig_2 <- (nh_white_plot_sp | nh_black_plot_sp) /
+  (nh_asian_plot_sp | nh_native_plot_sp | h_latino_plot_sp) +
+  plot_annotation(
+    title = "Water Insecurity Rates Scatterplots",
+    subtitle = "Each panel displays the top 100 counties with the highest population share for each racial demographic group",
+    caption = "Sources: TidyTuesday Water Insecurity Dataset; U.S. Census Bureau American Community Survey",
+    theme = theme(
+      plot.title = element_text(size = 14),
+      plot.subtitle = element_text(size = 10)
+    )
+  )
+
+fig_2
+```
+
+```{r}
+#| include: false
+
+# saves fig_2 to figures folder
+ggsave(
+  filename = "images/figures/fig_2.png",
+  plot = fig_2,
+  width = 11,
+  height = 6,
+  dpi = 300,
+  bg = "white"
+)
+```
+
+Each panel above displays the same 100 counties featured in the density plot and boxplot figures. The regression lines allow us to identify directional trends in these subsets of the data. However, the same cautions about directly comparing figures for the previous two sets of figures apply here due to the different subsets of counties in each graphic.
+
+Each racial demographic group appears to have a positively sloped regression line. Non-Hispanic Asians have the flattest of all the lines, indicating a minimal positive association with water insecurity rates. Meanwhile, Non-Hispanic Native Americans display the most positively sloped regression line, indicating that counties with higher population shares of Non-Hispanic Native Americans are associated with considerably higher rates of water insecurity. Counties with large population shares of Non-Hispanic White, Non-Hispanic Black, and Hispanic Latinos do not exhibit nearly as strong of a positive trend with rates of water insecurity.
+
+### Overall Conclusions
+
+From this analysis, we can generally conclude that for most counties in the United States, the rate of water insecurity is relatively low at less than 1%. Still, there appear to be specific demographic and economic variables that are associated with relatively high or low rates of water insecurity.
+
+Median household income appears negatively associated with rates of water insecurity, as counties with higher median household incomes generally experienced lower rates of water insecurity. It is once again notable that of the five counties with rates of water insecurity above 1%, all have median household incomes of less than \$90,000. Additionally, the regression line supports the conclusion of this negative association.
+
+For our racial demographic groups, a county's Non-Hispanic Native American population share appears most positively associated with higher rates of water insecurity. This is supported by the positively sloped regression line, which stands out as the steepest of all the regression lines, and the boxplot/density plots showing outliers with much higher relative rates of water insecurity compared with the other four demographic groups. The county's Non-Hispanic Asian population share appears to be the least associated with rates of water insecurity. This is due to the relatively flat regression line compared to all other demographics and the strong clustering of counties close to 0% in the density and boxplots.
+
+Counties with large population shares of Non-Hispanic White, Non-Hispanic Black, and Hispanic Latino residents seem to be somewhat positively associated with higher rates of water insecurity. This is supported by their positively sloped regression lines and their boxplots and density plots showing some outliers with relatively high rates of water insecurity.
+
+It is important to note once again that all of these associations are purely observational rather than causal, and that there are likely many other variables at play driving these relationships.
+
+## Question 2
+
+```{r}
+#| label: question-2-creating-percentage_point-change-for-plp
+# creates new dataset with all of the 2022 data, the 2023 plp data, and the delta between
+# 2022 and 2023 plp data
+water_census_2022_delta <- water_census_2022 |>
+  left_join(
+    water_census_2023 |>
+      select(
+        geoid, # matches rows based on geoid for adding 2023 plp data
+        percent_lacking_plumbing_2023 = percent_lacking_plumbing
+      ),
+    by = "geoid"
+  ) |>
+  mutate(
+    plp_percentage_point_change =
+      percent_lacking_plumbing_2023 - percent_lacking_plumbing
+  )
+```
+
+For this question, we will be using the percentage-point change from 2022 to 2023 in the percent of households lacking plumbing comparing data demographic, regional, and economic variables from 2022. The choice to use 2022 data is due to the fact that 2022 is when the changes primarily occurred.
+
+### Changes in Water Insecurity Rates and Median Household Income
+
+```{r}
+#| label: question-2-median-income-analysis
+
+# creates a median income figure object to use in a patchwork figure later
+fig_3 <- water_census_2022_delta |>
+  ggplot(
+    aes(x = median_household_income,
+        y = plp_percentage_point_change)
+  ) +
+  # sets transparency of points to be lighter to better display clustering
+  geom_point(alpha = 0.4) +
+  geom_smooth(method = "lm", se = FALSE) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 11),
+    plot.caption = element_text(size = 9),
+    axis.title.x = element_text(size = 8),
+    axis.title.y = element_text(size = 8),
+    axis.text.x = element_text(size = 6),
+    axis.text.y = element_text(size = 6),
+    panel.border = element_rect(
+      color = "black",
+      fill = NA,
+      linewidth = 0.6
+    )
+  ) +
+  scale_x_continuous(
+    labels = scales::label_dollar() 
+  ) +
+  scale_y_continuous(
+    labels = scales::label_percent(scale = 1),
+     expand = c(0, 0) # used to limit plots to just the range of the data
+  ) +
+  labs(
+    title = "Percentage Point Change in Households Lacking Complete Plumbing Across US Counties",
+    x = "Median Household Income",
+    y = "Percentage-Point Change in Households Lacking Complete Plumbing",
+    caption = "Sources: TidyTuesday Water Insecurity Dataset; U.S. Census Bureau American Community Survey"
+  )
+
+fig_3
+```
+
+```{r}
+#| include: false
+
+# saves fig_3 to figures folder
+ggsave(
+  filename = "images/figures/fig_3.png",
+  plot = fig_3,
+  width = 11,
+  height = 6,
+  dpi = 300,
+  bg = "white"
+)
+```
+
+As with the water insecurity data from question 1, there is wide variation in our data of the percentage-point change for each county from 2022 to 2023 when compared with median income. We can observe that the regression line is slightly negative, indicating that rates of water insecurity had a slight tendency to decline in counties with higher median incomes. Still, there are many counties with relatively high median household incomes that still saw increases.
+
+There appears to be a noticable number of counties of lower median household income levels, particularly between \$60,000 and \$90,000, which saw a modest or larger increase in the percentage of households that are water insecure. The high degree of variation still means that many counties with relatively low median household income saw reductions in their rates of water insecurity, but overall a negative association with median household income is observable.
+
+### Changes in Water Insecurity Rates and Region
+
+```{r}
+#| label: question-2-regional-analysis
+fig_4 <- water_census_2022_delta |>
+  mutate(
+    region = factor(
+      region,
+      # sets order by which regions will display
+      levels = c("West", "South", "Northeast", "Midwest")
+    )
+  ) |>
+  ggplot(
+    aes(
+      x = region,
+      y = plp_percentage_point_change,
+      fill = region # creats a boxplot for each region of the country
+    )
+  ) +
+  # creats a dashed line set at 0 to distinguish positive and negative changes in water
+  # insecurity
+  geom_hline(
+    yintercept = 0,
+    linetype = "dashed",
+    color = "gray40"
+  ) +
+  geom_boxplot(
+    width = 0.65
+  ) +
+  scale_fill_manual(
+    values = c(
+      "West" = "forestgreen",
+      "South" = "steelblue",
+      "Northeast" = "darkorange",
+      "Midwest" = "gold"
+    )
+  ) +
+  scale_y_continuous(
+    labels = scales::label_percent(scale = 1)
+  ) +
+  theme_minimal() +
+  theme(
+    axis.title.y = element_text(size = 10),
+    axis.title.x = element_text(size = 10),
+    legend.position = "none",
+    panel.border = element_rect(
+      color = "black",
+      fill = NA,
+      linewidth = 0.6
+    )
+  ) +
+  labs(
+    title = "Change in Water Insecurity Rates by U.S. Region",
+    x = "Region",
+    y = "Change in Water Insecurity Rate",
+    caption = "Source: TidyTuesday Water Insecurity Dataset; U.S. Census Bureau American Community Survey"
+  )
+
+fig_4
+```
+
+```{r}
+#| include: false
+
+# saves figu_4 to figures folder
+ggsave(
+  filename = "images/figures/fig_4.png",
+  plot = fig_4,
+  width = 11,
+  height = 6,
+  dpi = 300,
+  bg = "white"
+)
+```
+
+The changes in rates of water insecurity across different regions of the country do not appear to reveal many major differences between regions. All regions have median changes in rates of water insecurity near 0%, with all exhibiting outliers in each direction. At a glance, it does appear that the West has somewhat more outliers representing higher percentage-point increases in water insecurity rates, but this is still a very small number of counties. The same can be said for the Midwest for decreases in water insecurity rates, but this observation is likewise based off a small number of counties.
+
+Overall, we can not make any major conclusions regarding directions or trends of water insecurity rates across different regions.
+
+### Changes in Water Insecurity Rates and Racial Demographic Groups
+
+```{r}
+#| label: question-2-racial-demographic-analysis-boxplots-function
+# function streamlines boxplot creation for each racial demographic group
+make_top_demographic_boxplot_delta <- function(
+  data, # uses water_census_2022_delta
+  demographic, # the racial demographic we're interested in
+  title_text # the title of the plot
+) {
+  
+  data |>
+    slice_max(
+      order_by = {{ demographic }}, # selects specific racial demographic group
+      n = 100, # selects top 100 counties by population share from that group
+      with_ties = FALSE # forces a limit at 100 counties
+    ) |>
+    ggplot(
+      aes(x = plp_percentage_point_change) # plots figures horizontally
+    ) +
+    geom_boxplot() +
+    scale_x_continuous(
+      labels = scales::label_percent(scale = 1),
+      expand = c(0, 0)
+    ) +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(size = 9),
+      axis.title.x = element_text(size = 7),
+      axis.text.x = element_text(size = 7),
+      axis.title.y = element_blank(),
+      axis.text.y = element_blank(),
+      axis.ticks.y = element_blank(),
+      panel.border = element_rect(
+        color = "black",
+        fill = NA,
+        linewidth = 0.6
+      ),
+      plot.margin = margin(
+        t = 5.5,
+        r = 5.5,
+        b = 5.5,
+        l = 6.5 # set to avoid cutting off x-axis labels on the left side
+      )
+    ) +
+    labs(
+      title = title_text,
+      x = "Households Lacking Complete Plumbing (%)"
+    )
+}
+```
+
+```{r}
+#| label: question-2-racial_demographic_boxplots
+# creates a figure object for each demographic's boxplot
+nh_white_bp_d <- make_top_demographic_boxplot_delta(water_census_2022_delta, pct_nonhispanic_white, "Non-Hispanic White")
+
+nh_black_bp_d <- make_top_demographic_boxplot_delta(water_census_2022_delta, pct_nonhispanic_black, "Non-Hispanic Black")
+
+nh_asian_bp_d <- make_top_demographic_boxplot_delta(water_census_2022_delta, pct_nonhispanic_asian, "Non-Hispanic Asian")
+
+nh_native_bp_d <- make_top_demographic_boxplot_delta(water_census_2022_delta, pct_nonhispanic_native, "Non-Hispanic Native")
+
+h_latino_bp_d <- make_top_demographic_boxplot_delta(water_census_2022_delta, pct_hispanic_latino, "Hispanic Latino")
+
+# uses patchwork to fit all figures together
+fig_5 <- (nh_white_bp_d | nh_black_bp_d) /
+  (nh_asian_bp_d | nh_native_bp_d | h_latino_bp_d) +
+  plot_annotation(
+    title = "Water Insecurity Rates Boxplots",
+    subtitle = "Each panel displays the top 100 counties with the highest population share for each racial demographic group",
+    caption = "Sources: TidyTuesday Water Insecurity Dataset; U.S. Census Bureau American Community Survey",
+    theme = theme(
+      plot.title = element_text(size = 14),
+      plot.subtitle = element_text(size = 10)
+    )
+  )
+
+fig_5
+```
+
+```{r}
+#| include: false
+
+# saves fig_5 to figures folder
+ggsave(
+  filename = "images/figures/fig_5.png",
+  plot = fig_5,
+  width = 11,
+  height = 6,
+  dpi = 300,
+  bg = "white"
+)
+```
+
+The figures display the relationship between racial demographic group population share and water insecurity rates and again uses the top 100 counties with the highest population share of those groups, so the appropriate precautions should be made to not directly compare each figure. Also be aware that each figure does feature different x-axis scales.
+
+Our boxplots for each racial demographic show largely inconclusive results for identifying any trends. The median change in water insecurity rates is approximately 0% for all five groups and most of the plots appears largely symmetrical in their distribution, suggesting minimal favoring towards increases or decreases in water insecurity rates.
+
+```{r}
+#| label: question-2-racial-demographic-data-function-scatterplot
+# function streamlines scatterplot creation for each racial demographic group
+make_top_demographic_scatterplot_delta <- function(
+  data, # uses census_water_2022_delta
+  demographic, # the racial demographic we're interested in
+  title_text, # the title of the plot
+  x_label # the x-axis title
+) {
+  
+  data |>
+    slice_max(
+      order_by = {{ demographic }}, # selects specific racial demographic group
+      n = 100, # selects top 100 counties by population share from that group
+      with_ties = FALSE # forces a limit at 100 counties
+    ) |>
+    ggplot(
+      aes(
+        x = {{ demographic }},
+        y = plp_percentage_point_change
+      )
+    ) +
+    geom_point(alpha = 0.6) + # sets points to be transparent to better show point density
+    geom_smooth(
+      method = "lm",
+      se = FALSE
+    ) +
+    scale_x_continuous(
+      labels = scales::label_percent(scale = 1)
+    ) +
+    scale_y_continuous(
+      labels = scales::label_percent(scale = 1),
+      expand = c(0, 0)
+    ) +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(size = 10),
+      axis.title.x = element_text(size = 6.5),
+      axis.title.y = element_text(size = 6.5),
+      axis.text.x = element_text(size = 5.5),
+      axis.text.y = element_text(size = 5.5),
+      panel.border = element_rect(
+        color = "black",
+        fill = NA,
+        linewidth = 0.6
+      ),
+      plot.margin = margin(
+        t = 5.5,
+        r = 5.5,
+        b = 5.5,
+        l = 6.5
+      )
+    ) +
+    labs(
+      title = title_text,
+      x = x_label,
+      y = "Water Insecurity Rate (%)" # changes water insecurity axis label 
+                                      # to make space work on patchwork figure
+    )
+}
+```
+
+```{r}
+#| label: question-2-racial_demographic_scatterplots
+# creates a figure object for each demographic's boxplot
+nh_white_sp_d <- make_top_demographic_scatterplot_delta(water_census_2022_delta, pct_nonhispanic_white, "Non-Hispanic White", "Percent Non-Hispanic White")
+
+nh_black_sp_d <- make_top_demographic_scatterplot_delta(water_census_2022_delta, pct_nonhispanic_black, "Non-Hispanic Black", "Percent Non-Hispanic Black")
+
+nh_asian_sp_d <- make_top_demographic_scatterplot_delta(water_census_2022_delta, pct_nonhispanic_asian, "Non-Hispanic Asian", "Percent Non-Hispanic Asian")
+
+nh_native_sp_d <- make_top_demographic_scatterplot_delta(water_census_2022_delta, pct_nonhispanic_native, "Non-Hispanic Native", "Percent Non-Hispanic Native")
+
+h_latino_sp_d <- make_top_demographic_scatterplot_delta(water_census_2022_delta, pct_hispanic_latino, "Hispanic Latino", "Percent Hispanic Latino")
+
+# uses patchwork to fit all figures together
+(nh_white_sp_d | nh_black_sp_d) /
+  (nh_asian_sp_d | nh_native_sp_d | h_latino_sp_d) +
+  plot_annotation(
+    title = "Water Insecurity Rates Scatterplots",
+    subtitle = "Each panel displays the top 100 counties with the highest population share for each racial demographic group",
+    caption = "Sources: TidyTuesday Water Insecurity Dataset; U.S. Census Bureau American Community Survey",
+    theme = theme(
+      plot.title = element_text(size = 14),
+      plot.subtitle = element_text(size = 10)
+    )
+  )
+```
+
+Similar conclusions can be made regarding the scatterplots and regression lines for each of the demographic groups, as no strong associations exist in either direction to fully be able to conclude a positive or negative association between any of the racial demographic groups and the change in water insecurity rates. It does not appear that there are any strong patterns associated with the population share of specific racial demographic groups or changes in the rate of water insecurity in U.S. counties.
+
+## Overall Conclusions
+
+The overall conclusion regarding the relationship between regional, demographic, and economic variables and the change in water insecurity rates is that not many can be made. Our boxplots for both region and demographic group variables all show the median change in water insecurity being approximately 0%, with fairly symmetrical distributions. One could potentially make out a trend among regions with some notable outliers in the West showing increases in the rate of water insecurity, as well as some notable outliers in the Midwest showing decreases, but these observations rely on a small number of outliers.
+
+The relationship between the change in the rate of water insecurity and median household income appears to be negative, but weak. There does seem to be a general decline in the rate of water insecurity for counties with relatively higher median incomes, but the pattern is weak overall and high levels of variation within the data cause this pattern to be broken for plenty of counties.
+
+# Discussion
+
+Our analysis has revealed number of interesting conclusions regarding the relationship between the rate of water insecurity within a county and racial demographic, economic, and regional parameters. Our results from question 1 indicate that there is some association between a county's rate of water insecurity and median household income, as it appears that counties with higher median household incomes also have lower rates of water insecurity. Specific racial demographics also appear both positively and negatively associated with rates of water insecurity. Counties with large population shares of Non-Hispanic Native Americans appear positively associated with water insecurity rates, as those figures displayed some of the highest rates of water insecurity in their outliers. Counties with large Non-Hispanic Asian populations appeared to be somewhat negatively correlated with higher rates of water insecurity, but outliers that break this trend still exist.
+
+Our analysis for question 2 revealed very weak relationships between the change in rates of water insecurity and these same variables plus our regional variable. There were no discernible trends in the change of the rate of water insecurity in counties with particularly high racial demographic concentrations or in specific regions of the country. There seemed to be a weak negative association between median household income and the case in water insecurity, but our regression line is still fairly flat and high degrees of variation cause this trend to be broken for many counties.
+
+These findings are interesting as the conclusions we drew from each question do not mirror each other, as variables that appeared to be associated with either higher or lower rates of water insecurity in a county are not necessarily associated with the change in the rate of water insecurity over time. This indicates that while some patterns might exist for which demographics and economic variables are associated with rates of water insecurity, there is no relationship between those variables and how the rate of water insecurity in those counties are changing.
+
+It is also important to note that these observations and conclusions are being drawn from only two years worth of data, meaning any larger scale, macro trends could be obscured by our very short time-series analysis. In general, the small share of the population that specific racial demographic groups compose also pose a limitation on how much we can conclude from those figures, as these groups are represented to different degrees in each figure. Lastly, it is important to consider what other variables could be at play here which could provide a better causal explanation. Unused parameters such as underlying geology, urban vs. rural designation, or annual precipitation averages all could be significant factors in explaining the rate of water insecurity, while the parameters we examined may just be providing insight into the specific communities impacted by their surrounding environment.

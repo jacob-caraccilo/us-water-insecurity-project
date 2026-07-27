@@ -1,0 +1,11 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+.RDataTmp
+_freeze/
+
+/.quarto/
+.positai
+
+**/*.quarto_ipynb
